@@ -1,0 +1,26 @@
+include: package:very_good_analysis/analysis_options.yaml
+
+analyzer:
+  language:
+    strict-casts: true
+    strict-inference: true
+    strict-raw-types: true
+  exclude:
+    - "**/*.g.dart"
+    - "**/*.freezed.dart"
+    - ".fvm/**"
+    - "build/**"
+  errors:
+    invalid_annotation_target: ignore
+
+linter:
+  rules:
+    public_member_api_docs: false
+    lines_longer_than_80_chars: false
+    prefer_function_declarations_over_variables: false
+    avoid_function_literals_in_foreach_calls: false
+    use_setters_to_change_properties: false
+    sort_pub_dependencies: false
+    flutter_style_todos: false
+    specify_nonobvious_property_types: false
+    avoid_redundant_argument_values: false

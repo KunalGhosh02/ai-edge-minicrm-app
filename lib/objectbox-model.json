@@ -1,0 +1,160 @@
+{
+  "_note1": "KEEP THIS FILE! Check it into a version control system (VCS) like git.",
+  "_note2": "ObjectBox manages crucial IDs for your object model. See docs for details.",
+  "_note3": "If you have VCS merge conflicts, you must resolve them according to ObjectBox docs.",
+  "entities": [
+    {
+      "id": "1:7035140778498044880",
+      "lastPropertyId": "6:8797849819853913992",
+      "name": "DocumentChunk",
+      "properties": [
+        {
+          "id": "1:7064351884726495478",
+          "name": "id",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:844416050715275806",
+          "name": "documentTitle",
+          "indexId": "1:8853101028003422256",
+          "type": 9,
+          "flags": 2048
+        },
+        {
+          "id": "3:5454680228921093032",
+          "name": "text",
+          "type": 9
+        },
+        {
+          "id": "4:5504691566618570443",
+          "name": "chunkIndex",
+          "type": 6
+        },
+        {
+          "id": "5:2117751560864178643",
+          "name": "createdAtMs",
+          "type": 6
+        },
+        {
+          "id": "6:8797849819853913992",
+          "name": "embedding",
+          "indexId": "2:4410574472035736354",
+          "type": 28,
+          "flags": 8
+        }
+      ],
+      "relations": []
+    },
+    {
+      "id": "2:7514555814550740785",
+      "lastPropertyId": "7:6370828985791541420",
+      "name": "ChatMessageBox",
+      "properties": [
+        {
+          "id": "1:6778601470025593426",
+          "name": "id",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:92122755749263985",
+          "name": "messageId",
+          "indexId": "3:6694302986667370828",
+          "type": 9,
+          "flags": 40
+        },
+        {
+          "id": "3:4656265583605660482",
+          "name": "threadId",
+          "indexId": "4:4498975362721733583",
+          "type": 9,
+          "flags": 8
+        },
+        {
+          "id": "4:8193788032881072146",
+          "name": "role",
+          "type": 6
+        },
+        {
+          "id": "5:5946273438667772289",
+          "name": "text",
+          "type": 9
+        },
+        {
+          "id": "6:3643120505869524499",
+          "name": "thinking",
+          "type": 9
+        },
+        {
+          "id": "7:6370828985791541420",
+          "name": "createdAtMs",
+          "type": 6
+        }
+      ],
+      "relations": []
+    },
+    {
+      "id": "3:2329032265644042887",
+      "lastPropertyId": "8:4105221145724707902",
+      "name": "ChatThreadBox",
+      "properties": [
+        {
+          "id": "1:8377725080285235349",
+          "name": "id",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:1096411176014836760",
+          "name": "threadId",
+          "indexId": "5:8319162824871040312",
+          "type": 9,
+          "flags": 40
+        },
+        {
+          "id": "3:464179234006644623",
+          "name": "title",
+          "type": 9
+        },
+        {
+          "id": "4:7245498532030590122",
+          "name": "systemInstruction",
+          "type": 9
+        },
+        {
+          "id": "5:4051714762867169412",
+          "name": "chatFamily",
+          "type": 9
+        },
+        {
+          "id": "6:7967932845817016510",
+          "name": "modelId",
+          "type": 9
+        },
+        {
+          "id": "7:3510898924227377693",
+          "name": "createdAtMs",
+          "type": 6
+        },
+        {
+          "id": "8:4105221145724707902",
+          "name": "updatedAtMs",
+          "type": 6
+        }
+      ],
+      "relations": []
+    }
+  ],
+  "lastEntityId": "3:2329032265644042887",
+  "lastIndexId": "5:8319162824871040312",
+  "lastRelationId": "0:0",
+  "lastSequenceId": "0:0",
+  "modelVersion": 5,
+  "modelVersionParserMinimum": 5,
+  "retiredEntityUids": [],
+  "retiredIndexUids": [],
+  "retiredPropertyUids": [],
+  "retiredRelationUids": [],
+  "version": 1
+}
