@@ -322,7 +322,7 @@ class _LoadEmbedderCta extends StatelessWidget {
           Expanded(
             child: Text(
               '$missing chunk${missing == 1 ? '' : 's'} stored without '
-              'embeddings. Load an embedder from the Assistant > Models sheet '
+              'embeddings. Load an embedder from the Playground > Models sheet '
               'to enable semantic search; indexing will start automatically.',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,

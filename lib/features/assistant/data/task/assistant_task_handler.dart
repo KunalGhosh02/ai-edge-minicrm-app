@@ -29,6 +29,8 @@ class AssistantTaskHandler extends TaskHandler {
   ChatModelFamily _currentFamily = ChatModelFamily.general;
   int _currentMaxTokens = 4096;
   String _systemInstruction = _defaultSystemInstruction;
+  bool _thinkingEnabled = true;
+  final List<({bool isUser, String text})> _sessionHistory = [];
   Completer<void> _initialized = Completer<void>();
   Embedder? _embedder;
   String? _embedderModelPath;
@@ -384,16 +386,56 @@ class AssistantTaskHandler extends TaskHandler {
     await _resetChat();
   }
 
-  Future<void> _resetChat() async {
+  Future<void> _ensureRoomForTurn(String newPrompt) async {
     final model = _inferenceModel;
-    if (model == null) return;
+    if (model == null || _chat == null) return;
+    const responseReserve = 768;
+    final budget = _currentMaxTokens - responseReserve;
+    final newEst = _estimateTokens(newPrompt);
+    if (_estimateSessionTokens() + newEst <= budget) return;
+
+    final trimmed = _selectReplayTail(
+      _sessionHistory,
+      _currentMaxTokens,
+      reserveForNextTurn: responseReserve + newEst + 256,
+    );
+    _emit(LogEvent(
+      message: 'Trimming chat session — kept ${trimmed.length} of '
+          '${_sessionHistory.length} prior turns (KV cache nearing limit)',
+    ));
     await _disposeChat();
     _chat = await model.createChat(
       systemInstruction: _systemInstruction,
       temperature: 0.7,
       topK: 40,
       topP: 0.95,
-      isThinking: _currentFamily.hasThoughts,
+      isThinking: _thinkingEnabled && _currentFamily.hasThoughts,
+      modelType: _toFlutterGemmaModelType(_currentFamily),
+    );
+    _sessionHistory
+      ..clear()
+      ..addAll(trimmed);
+    for (final m in trimmed) {
+      try {
+        await _chat!.addQueryChunk(Message(text: m.text, isUser: m.isUser));
+      } on Object catch (e) {
+        debugPrint('session trim replay halted: $e');
+        break;
+      }
+    }
+  }
+
+  Future<void> _resetChat() async {
+    final model = _inferenceModel;
+    if (model == null) return;
+    await _disposeChat();
+    _sessionHistory.clear();
+    _chat = await model.createChat(
+      systemInstruction: _systemInstruction,
+      temperature: 0.7,
+      topK: 40,
+      topP: 0.95,
+      isThinking: _thinkingEnabled && _currentFamily.hasThoughts,
       modelType: _toFlutterGemmaModelType(_currentFamily),
     );
   }
@@ -452,9 +494,13 @@ class AssistantTaskHandler extends TaskHandler {
             .toList()
         : const <({bool isUser, String text})>[];
 
+    final thinkingRequested = (map['thinking'] as bool?) ?? true;
+    final isThinking = thinkingRequested && family.hasThoughts;
+
     _emit(const StatusEvent(phase: AssistantPhase.loading));
     _emit(LogEvent(
-      message: 'Switching chat (${history.length} prior turns)…',
+      message: 'Switching chat (${history.length} prior turns, '
+          'thinking=${isThinking ? "on" : "off"})…',
     ));
 
     await _generationSubscription?.cancel();
@@ -463,13 +509,14 @@ class AssistantTaskHandler extends TaskHandler {
 
     _systemInstruction = systemInstruction;
     _currentFamily = family;
+    _thinkingEnabled = isThinking;
 
     _chat = await model.createChat(
       systemInstruction: systemInstruction,
       temperature: 0.7,
       topK: 40,
       topP: 0.95,
-      isThinking: family.hasThoughts,
+      isThinking: isThinking,
       modelType: _toFlutterGemmaModelType(family),
     );
 
@@ -480,10 +527,12 @@ class AssistantTaskHandler extends TaskHandler {
             '(KV cache = $_currentMaxTokens tokens)',
       ));
     }
+    _sessionHistory.clear();
     var replayed = 0;
     for (final m in replay) {
       try {
         await _chat!.addQueryChunk(Message(text: m.text, isUser: m.isUser));
+        _sessionHistory.add(m);
         replayed += 1;
       } on Object catch (e) {
         debugPrint('switchChat replay halted at $replayed turns: $e');
@@ -494,17 +543,28 @@ class AssistantTaskHandler extends TaskHandler {
     _emit(const StatusEvent(phase: AssistantPhase.ready));
   }
 
-  /// Choose the longest tail of [history] that fits in a budget of roughly
-  /// `(maxTokens - reserve) / 3.5` characters (very conservative
-  /// chars-per-token estimate). Always keeps the alternation intact by
-  /// rounding to the next user message.
+  static const double _avgCharsPerToken = 2.5;
+
+  static int _estimateTokens(String text) =>
+      (text.length / _avgCharsPerToken).ceil();
+
+  int _estimateSessionTokens() {
+    var total = _estimateTokens(_systemInstruction) + 32;
+    for (final m in _sessionHistory) {
+      total += _estimateTokens(m.text) + 8;
+    }
+    return total;
+  }
+
   List<({bool isUser, String text})> _selectReplayTail(
     List<({bool isUser, String text})> history,
     int maxTokens, {
     int reserveForNextTurn = 1024,
   }) {
     final budgetChars =
-        ((maxTokens - reserveForNextTurn).clamp(256, maxTokens) * 3.5).toInt();
+        ((maxTokens - reserveForNextTurn).clamp(256, maxTokens) *
+                _avgCharsPerToken)
+            .toInt();
     if (history.isEmpty) return const [];
     var chars = 0;
     var cut = history.length;
@@ -867,7 +927,7 @@ class AssistantTaskHandler extends TaskHandler {
       unawaited(
         FlutterForegroundTask.updateService(
           notificationTitle: 'Loading model',
-          notificationText: 'Preparing the on-device assistant…',
+          notificationText: 'Preparing the on-device playground…',
         ),
       );
 
@@ -911,7 +971,7 @@ class AssistantTaskHandler extends TaskHandler {
 
       unawaited(
         FlutterForegroundTask.updateService(
-          notificationTitle: 'Assistant ready',
+          notificationTitle: 'Playground ready',
           notificationText:
               'Running $shownName on ${backend.toUpperCase()}.',
         ),
@@ -990,10 +1050,22 @@ class AssistantTaskHandler extends TaskHandler {
 
     final textBuffer = StringBuffer();
     try {
-      await chat.addQueryChunk(Message(text: composed, isUser: true));
+      await _ensureRoomForTurn(composed);
+      final liveChat = _chat;
+      if (liveChat == null) {
+        _emit(
+          const StatusEvent(
+            phase: AssistantPhase.error,
+            detail: 'Chat session unavailable after trim',
+          ),
+        );
+        return;
+      }
+      await liveChat.addQueryChunk(Message(text: composed, isUser: true));
+      _sessionHistory.add((isUser: true, text: composed));
 
       final completer = Completer<void>();
-      _generationSubscription = chat.generateChatResponseAsync().listen(
+      _generationSubscription = liveChat.generateChatResponseAsync().listen(
         (response) {
           switch (response) {
             case TextResponse(:final token):
@@ -1021,7 +1093,11 @@ class AssistantTaskHandler extends TaskHandler {
       );
 
       await completer.future;
-      _emit(DoneEvent(requestId: requestId, text: textBuffer.toString()));
+      final finalText = textBuffer.toString();
+      if (finalText.isNotEmpty) {
+        _sessionHistory.add((isUser: false, text: finalText));
+      }
+      _emit(DoneEvent(requestId: requestId, text: finalText));
       _emit(const StatusEvent(phase: AssistantPhase.ready));
     } on Object catch (e, st) {
       debugPrint('Generate error: $e\n$st');
@@ -1031,7 +1107,7 @@ class AssistantTaskHandler extends TaskHandler {
       _generationSubscription = null;
       unawaited(
         FlutterForegroundTask.updateService(
-          notificationTitle: 'Assistant ready',
+          notificationTitle: 'Playground ready',
           notificationText:
               'Running on-device flutter_gemma in foreground.',
           notificationButtons: const [],
@@ -1063,6 +1139,7 @@ class AssistantTaskHandler extends TaskHandler {
     await _generationSubscription?.cancel();
     _generationSubscription = null;
     await _disposeChat();
+    _sessionHistory.clear();
     await _inferenceModel?.close();
     _inferenceModel = null;
     _currentModelPath = null;
@@ -1114,7 +1191,7 @@ class AssistantTaskHandler extends TaskHandler {
     _emit(const StatusEvent(phase: AssistantPhase.idle));
     unawaited(
       FlutterForegroundTask.updateService(
-        notificationTitle: 'Assistant ready',
+        notificationTitle: 'Playground ready',
         notificationText: 'No model loaded — open the app to pick one.',
       ),
     );
@@ -1415,7 +1492,12 @@ class AssistantTaskHandler extends TaskHandler {
         sequenceLength: sequenceLength,
         preferredBackend: preferred,
       );
-      _adoptFlutterGemmaEmbedder(embedder, descriptor: descriptor);
+      _adoptFlutterGemmaEmbedder(
+        embedder,
+        descriptor: descriptor,
+        modelPath: modelPath,
+        tokenizerPath: tokenizerPath,
+      );
     } on Object catch (e, st) {
       debugPrint('flutter_gemma embedder load error: $e\n$st');
       _embedder = null;
@@ -1434,14 +1516,18 @@ class AssistantTaskHandler extends TaskHandler {
   void _adoptFlutterGemmaEmbedder(
     Embedder embedder, {
     required String descriptor,
+    String? modelPath,
+    String? tokenizerPath,
   }) {
+    final reportedModelPath = modelPath ?? descriptor;
+    final reportedTokenizerPath = tokenizerPath ?? descriptor;
     _embedder = embedder;
-    _embedderModelPath = descriptor;
-    _embedderTokenizerPath = descriptor;
+    _embedderModelPath = reportedModelPath;
+    _embedderTokenizerPath = reportedTokenizerPath;
     _emit(
       EmbedderLoadedEvent(
-        modelPath: descriptor,
-        tokenizerPath: descriptor,
+        modelPath: reportedModelPath,
+        tokenizerPath: reportedTokenizerPath,
         dim: embedder.embeddingDim,
         backend: embedder.backendName,
         runtime: embedder.runtime.id,

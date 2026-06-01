@@ -43,7 +43,7 @@ class AssistantStatusBanner extends StatelessWidget {
     return switch (status) {
       AssistantIdle() => (
           Icons.cloud_off_outlined,
-          'Assistant not running',
+          'Playground not running',
           scheme.onSurfaceVariant,
         ),
       AssistantDownloading(

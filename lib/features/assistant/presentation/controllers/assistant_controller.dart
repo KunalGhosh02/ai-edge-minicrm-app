@@ -3,17 +3,19 @@ import 'dart:async';
 import 'package:equatable/equatable.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:minicrm/features/assistant/data/bus/chat_event_bus.dart';
 import 'package:minicrm/features/assistant/data/ipc/assistant_ipc.dart';
 import 'package:minicrm/features/assistant/data/repositories/object_box_chat_history_repository.dart';
+import 'package:minicrm/features/assistant/data/subscribers/chat_persistence_subscriber.dart';
 import 'package:minicrm/features/assistant/domain/entities/assistant_message.dart';
 import 'package:minicrm/features/assistant/domain/entities/assistant_status.dart';
 import 'package:minicrm/features/assistant/domain/entities/chat_thread.dart';
 import 'package:minicrm/features/assistant/domain/entities/installed_model.dart';
 import 'package:minicrm/features/assistant/domain/entities/model_preset.dart';
+import 'package:minicrm/features/assistant/domain/events/chat_event.dart';
 import 'package:minicrm/features/assistant/domain/repositories/assistant_service.dart';
 import 'package:minicrm/features/assistant/domain/repositories/chat_history_repository.dart';
 import 'package:minicrm/features/assistant/presentation/controllers/assistant_providers.dart';
-import 'package:minicrm/features/context/presentation/controllers/context_providers.dart';
 import 'package:minicrm/features/settings/presentation/controllers/settings_controller.dart';
 import 'package:uuid/uuid.dart';
 
@@ -118,23 +120,44 @@ class AssistantUiState extends Equatable {
 }
 
 class AssistantController extends Notifier<AssistantUiState> {
-  StreamSubscription<AssistantEvent>? _subscription;
+  StreamSubscription<AssistantEvent>? _serviceSubscription;
+  StreamSubscription<ChatEvent>? _busSubscription;
+  StreamSubscription<List<AssistantMessage>>? _messagesSubscription;
   final Uuid _uuid = const Uuid();
-  String? _streamingMessageId;
   Completer<void>? _embedderLoadCompleter;
+
+  List<AssistantMessage> _persistedMessages = const [];
+  AssistantMessage? _inFlightAssistantMessage;
 
   @override
   AssistantUiState build() {
     final service = ref.watch(assistantServiceProvider);
-    unawaited(_subscription?.cancel());
-    _subscription = service.events.listen(_onEvent);
+    final bus = ref.watch(chatEventBusProvider);
     ref
-      ..onDispose(() => unawaited(_subscription?.cancel()))
+      ..watch(chatPersistenceSubscriberProvider)
+      ..watch(llmDriverSubscriberProvider);
+
+    unawaited(_serviceSubscription?.cancel());
+    unawaited(_busSubscription?.cancel());
+    _serviceSubscription = service.events.listen(_onWorkerEvent);
+    _busSubscription = bus.events.listen(_onChatEvent);
+
+    ref
+      ..onDispose(() {
+        unawaited(_serviceSubscription?.cancel());
+        unawaited(_busSubscription?.cancel());
+        unawaited(_messagesSubscription?.cancel());
+      })
       ..listen(settingsControllerProvider, (prev, next) {
         final prevPrompt = prev?.value?.systemPrompt;
         final nextPrompt = next.value?.systemPrompt;
         if (nextPrompt != null && nextPrompt != prevPrompt) {
           unawaited(_service.setSystemPrompt(nextPrompt));
+        }
+        final prevThinking = prev?.value?.thinkingEnabled;
+        final nextThinking = next.value?.thinkingEnabled;
+        if (nextThinking != null && nextThinking != prevThinking) {
+          ref.read(llmDriverSubscriberProvider).invalidateWorkerSession();
         }
       });
 
@@ -158,8 +181,6 @@ class AssistantController extends Notifier<AssistantUiState> {
         ChatModelFamily.general;
   }
 
-  /// Create a brand new chat thread with the current model's family +
-  /// the user's configured system prompt. Opens it as the active thread.
   Future<ChatThread> createThread({String? title}) async {
     final repo = await _historyRepo;
     final systemInstruction = await _defaultSystemInstruction();
@@ -174,39 +195,37 @@ class AssistantController extends Notifier<AssistantUiState> {
     return thread;
   }
 
-  /// Make [threadId] the active conversation: hydrate the message list
-  /// from ObjectBox and tell the worker to recreate its chat session and
-  /// replay the history through `addQueryChunk` so the KV cache is warm.
   Future<void> openThread(String threadId) async {
+    ref.read(llmDriverSubscriberProvider).abortInFlight();
+    await _messagesSubscription?.cancel();
+    _messagesSubscription = null;
+    _persistedMessages = const [];
+    _inFlightAssistantMessage = null;
+
     final repo = await _historyRepo;
     final thread = await repo.getThread(threadId);
     if (thread == null) return;
     final messages = await repo.getMessages(threadId);
+    _persistedMessages = messages;
     state = state.copyWith(
       activeThread: thread,
       messages: messages,
       clearError: true,
     );
-    if (state.currentModel != null) {
-      await _service.switchChat(
-        threadId: thread.id,
-        systemInstruction: thread.systemInstruction,
-        chatFamily: thread.chatFamily.id,
-        history: [
-          for (final m in messages)
-            {
-              'role': m.role == AssistantRole.user ? 'user' : 'assistant',
-              'text': m.text,
-            },
-        ],
-      );
-    }
+
+    _messagesSubscription = repo
+        .watchMessages(threadId)
+        .listen((rows) => _onDbMessages(threadId, rows));
   }
 
   Future<void> deleteThread(String threadId) async {
     final repo = await _historyRepo;
     await repo.deleteThread(threadId);
     if (state.activeThread?.id == threadId) {
+      await _messagesSubscription?.cancel();
+      _messagesSubscription = null;
+      _persistedMessages = const [];
+      _inFlightAssistantMessage = null;
       state = state.copyWith(
         clearActiveThread: true,
         messages: const [],
@@ -268,6 +287,7 @@ class AssistantController extends Notifier<AssistantUiState> {
       clearCurrentModel: true,
       clearError: true,
     );
+    ref.read(llmDriverSubscriberProvider).invalidateWorkerSession();
     await _service.unloadModel();
   }
 
@@ -307,6 +327,7 @@ class AssistantController extends Notifier<AssistantUiState> {
       status: const AssistantLoading(),
       clearError: true,
     );
+    ref.read(llmDriverSubscriberProvider).invalidateWorkerSession();
     await _service.loadInstalledModel(
       path: model.path,
       backend: backend,
@@ -399,68 +420,105 @@ class AssistantController extends Notifier<AssistantUiState> {
     if (state.activeThread == null) {
       await createThread();
     }
+    final activeThread = state.activeThread;
+    if (activeThread == null) return;
 
-    final now = DateTime.now();
     final userMessage = AssistantMessage(
       id: _uuid.v4(),
       role: AssistantRole.user,
       text: trimmed,
-      createdAt: now,
-    );
-    final assistantMessage = AssistantMessage(
-      id: _uuid.v4(),
-      role: AssistantRole.assistant,
-      text: '',
-      createdAt: now.add(const Duration(milliseconds: 1)),
-      isStreaming: true,
-    );
-    _streamingMessageId = assistantMessage.id;
-
-    state = state.copyWith(
-      status: const AssistantGenerating(),
-      messages: [...state.messages, userMessage, assistantMessage],
-      clearError: true,
+      createdAt: DateTime.now(),
     );
 
-    final activeThread = state.activeThread;
-    if (activeThread != null) {
-      try {
-        final repo = await _historyRepo;
-        await repo.appendMessage(
-          threadId: activeThread.id,
-          message: userMessage,
+    if (activeThread.title == 'New chat' || activeThread.title.isEmpty) {
+      final title = trimmed.length > 40
+          ? '${trimmed.substring(0, 40)}…'
+          : trimmed;
+      unawaited(renameThread(threadId: activeThread.id, title: title));
+    }
+
+    state = state.copyWith(clearError: true);
+    final history = <ChatTurnHistory>[
+      for (final m in state.messages)
+        ChatTurnHistory(
+          role: m.role == AssistantRole.user ? 'user' : 'assistant',
+          text: m.text,
+        ),
+    ];
+    final settings = await ref.read(settingsControllerProvider.future);
+    ref.read(chatEventBusProvider).publish(
+          UserMessageSubmitted(
+            threadId: activeThread.id,
+            message: userMessage,
+            replayHistory: history,
+            systemInstruction: activeThread.systemInstruction,
+            chatFamily: activeThread.chatFamily.id,
+            thinkingEnabled: settings.thinkingEnabled,
+          ),
         );
-        if (activeThread.title == 'New chat' || activeThread.title.isEmpty) {
-          final title = trimmed.length > 40
-              ? '${trimmed.substring(0, 40)}…'
-              : trimmed;
-          await renameThread(threadId: activeThread.id, title: title);
-        }
-      } on Object catch (e) {
-        debugPrint('[assistant] persist user msg failed: $e');
-      }
-    }
-
-    final contextChunks = await _retrieveContext(trimmed);
-
-    try {
-      await _service.generate(
-        prompt: trimmed,
-        contextChunks: contextChunks,
-      );
-    } on Object catch (e) {
-      state = state.copyWith(
-        status: AssistantError(e.toString()),
-        lastError: e.toString(),
-      );
-    }
   }
 
   Future<void> stopGeneration() async {
     await _service.stopGeneration();
   }
 
-  void _onEvent(AssistantEvent event) {
+  void _onChatEvent(ChatEvent event) {
+    if (event.channel != ChatChannel.local) return;
+    if (event.threadId != state.activeThread?.id) return;
+    switch (event) {
+      case UserMessageSubmitted():
+        state = state.copyWith(status: const AssistantGenerating());
+      case AssistantStarted():
+        _inFlightAssistantMessage = AssistantMessage(
+          id: event.messageId,
+          role: AssistantRole.assistant,
+          text: '',
+          createdAt: DateTime.now(),
+          isStreaming: true,
+        );
+        _emitMessages();
+      case AssistantToken():
+        final current = _inFlightAssistantMessage;
+        if (current == null || current.id != event.messageId) return;
+        _inFlightAssistantMessage = current.append(event.token);
+        _emitMessages();
+      case AssistantThinkingToken():
+        final current = _inFlightAssistantMessage;
+        if (current == null || current.id != event.messageId) return;
+        _inFlightAssistantMessage = current.appendThinking(event.token);
+        _emitMessages();
+      case AssistantCompleted():
+        _inFlightAssistantMessage = event.message;
+        _emitMessages();
+      case AssistantFailed():
+        _inFlightAssistantMessage = null;
+        state = state.copyWith(
+          status: AssistantError(event.error),
+          lastError: event.error,
+        );
+        _emitMessages();
+    }
+  }
+
+  void _onDbMessages(String threadId, List<AssistantMessage> messages) {
+    if (state.activeThread?.id != threadId) return;
+    _persistedMessages = messages;
+    final inflight = _inFlightAssistantMessage;
+    if (inflight != null && messages.any((m) => m.id == inflight.id)) {
+      _inFlightAssistantMessage = null;
+    }
+    _emitMessages();
+  }
+
+  void _emitMessages() {
+    final inflight = _inFlightAssistantMessage;
+    final merged = inflight == null
+        ? _persistedMessages
+        : [..._persistedMessages, inflight];
+    state = state.copyWith(messages: merged);
+  }
+
+  void _onWorkerEvent(AssistantEvent event) {
     switch (event) {
       case StatusEvent():
         state = state.copyWith(status: _statusFromEvent(event));
@@ -480,12 +538,8 @@ class AssistantController extends Notifier<AssistantUiState> {
             totalBytes: event.totalBytes,
           ),
         );
-      case TokenEvent():
-        _appendToken(event.token);
-      case ThinkingTokenEvent():
-        _appendThinking(event.token);
-      case DoneEvent():
-        _finalizeStreaming(event.text);
+      case TokenEvent() || ThinkingTokenEvent() || DoneEvent():
+        break;
       case LogEvent():
         final next = [...state.workerLog, event.message];
         final trimmed =
@@ -523,11 +577,9 @@ class AssistantController extends Notifier<AssistantUiState> {
             completer.complete();
           }
         }
-      case EmbeddingEvent():
-        break;
-      case IndexingProgressEvent():
-        break;
-      case IndexingDoneEvent():
+      case EmbeddingEvent() ||
+            IndexingProgressEvent() ||
+            IndexingDoneEvent():
         break;
     }
   }
@@ -544,91 +596,6 @@ class AssistantController extends Notifier<AssistantUiState> {
         AssistantError(event.detail ?? 'Unknown error'),
       _ => state.status,
     };
-  }
-
-  void _appendToken(String token) {
-    final id = _streamingMessageId;
-    if (id == null) return;
-    final updated = [
-      for (final message in state.messages)
-        if (message.id == id) message.append(token) else message,
-    ];
-    state = state.copyWith(messages: updated);
-  }
-
-  void _appendThinking(String token) {
-    final id = _streamingMessageId;
-    if (id == null) return;
-    final updated = [
-      for (final message in state.messages)
-        if (message.id == id) message.appendThinking(token) else message,
-    ];
-    state = state.copyWith(messages: updated);
-  }
-
-  void _finalizeStreaming(String finalText) {
-    final id = _streamingMessageId;
-    if (id == null) return;
-    final updated = [
-      for (final message in state.messages)
-        if (message.id == id) message.finalize(finalText) else message,
-    ];
-    state = state.copyWith(messages: updated, status: const AssistantReady());
-    _streamingMessageId = null;
-    final activeThread = state.activeThread;
-    final finalized = updated.firstWhere(
-      (m) => m.id == id,
-      orElse: () => AssistantMessage(
-        id: id,
-        role: AssistantRole.assistant,
-        text: finalText,
-        createdAt: DateTime.now(),
-      ),
-    );
-    if (activeThread != null) {
-      unawaited(_persistAssistantMessage(activeThread.id, finalized));
-    }
-  }
-
-  Future<void> _persistAssistantMessage(
-    String threadId,
-    AssistantMessage message,
-  ) async {
-    try {
-      final repo = await _historyRepo;
-      await repo.upsertMessage(threadId: threadId, message: message);
-    } on Object catch (e) {
-      debugPrint('[assistant] persist assistant msg failed: $e');
-    }
-  }
-
-  Future<List<String>> _retrieveContext(String prompt) async {
-    try {
-      final settings = await ref.read(settingsControllerProvider.future);
-      if (!settings.ragEnabled) return const [];
-      final repo = await ref.read(documentChunkRepositoryProvider.future);
-
-      if (state.embedderLoaded && repo.countWithEmbeddings() > 0) {
-        try {
-          final vec = await _service.embed(text: prompt, isQuery: true);
-          if (vec.isNotEmpty) {
-            final hits = repo.vectorSearch(vec, limit: 3);
-            if (hits.isNotEmpty) {
-              return [for (final h in hits) h.chunk.text];
-            }
-          }
-        } on Object catch (e) {
-          debugPrint('[assistant] vector retrieval failed, '
-              'falling back to lexical: $e');
-        }
-      }
-
-      final hits = repo.searchByKeywords(prompt, limit: 3);
-      return [for (final c in hits) c.text];
-    } on Object catch (e) {
-      debugPrint('[assistant] _retrieveContext failed: $e');
-      return const [];
-    }
   }
 }
 

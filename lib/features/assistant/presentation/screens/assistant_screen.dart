@@ -2,14 +2,16 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:minicrm/app/router/app_router.dart';
 import 'package:minicrm/features/assistant/domain/entities/assistant_status.dart';
 import 'package:minicrm/features/assistant/domain/entities/installed_model.dart';
 import 'package:minicrm/features/assistant/domain/entities/model_preset.dart';
 import 'package:minicrm/features/assistant/presentation/controllers/assistant_controller.dart';
 import 'package:minicrm/features/assistant/presentation/widgets/assistant_message_bubble.dart';
 import 'package:minicrm/features/assistant/presentation/widgets/assistant_status_banner.dart';
-import 'package:minicrm/features/assistant/presentation/widgets/models_sheet.dart';
 import 'package:minicrm/features/assistant/presentation/widgets/prompt_input.dart';
+import 'package:minicrm/features/settings/presentation/controllers/settings_controller.dart';
 
 class AssistantScreen extends ConsumerStatefulWidget {
   const AssistantScreen({required this.threadId, super.key});
@@ -67,7 +69,12 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
     final isGenerating = state.status is AssistantGenerating;
 
     final isLoading = state.status is AssistantLoading;
-    final title = state.activeThread?.title ?? 'Assistant';
+    final title = state.activeThread?.title ?? 'Playground';
+
+    final family = state.activeThread?.chatFamily;
+    final familySupportsThinking = family != null && family.hasThoughts;
+    final settingsAsync = ref.watch(settingsControllerProvider);
+    final thinkingEnabled = settingsAsync.value?.thinkingEnabled ?? true;
 
     return Scaffold(
       appBar: AppBar(
@@ -77,13 +84,22 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
           overflow: TextOverflow.ellipsis,
         ),
         actions: [
-          IconButton(
-            tooltip: 'Models',
-            icon: const Icon(Icons.dns_outlined),
-            onPressed: isLoading
-                ? null
-                : () => unawaited(ModelsSheet.show(context)),
-          ),
+          if (familySupportsThinking)
+            IconButton(
+              tooltip: thinkingEnabled
+                  ? 'Thinking: on (tap to disable)'
+                  : 'Thinking: off (tap to enable)',
+              icon: Icon(
+                thinkingEnabled
+                    ? Icons.psychology
+                    : Icons.psychology_outlined,
+              ),
+              onPressed: () => unawaited(
+                ref
+                    .read(settingsControllerProvider.notifier)
+                    .setThinkingEnabled(enabled: !thinkingEnabled),
+              ),
+            ),
           IconButton(
             tooltip: 'Stop worker',
             icon: const Icon(Icons.power_settings_new),
@@ -100,7 +116,7 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
             _CurrentModelStrip(
               model: state.currentModel!,
               backend: state.currentBackend,
-              onChange: () => unawaited(ModelsSheet.show(context)),
+              onChange: () => context.push(AppRoute.models),
             ),
           if (state.workerLog.isNotEmpty) _WorkerLogStrip(log: state.workerLog),
           Expanded(
@@ -108,8 +124,7 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
                 ? _EmptyAssistant(
                     hasModel: state.currentModel != null,
                     installedCount: state.installedModels.length,
-                    onOpenModels: () =>
-                        unawaited(ModelsSheet.show(context)),
+                    onOpenModels: () => context.push(AppRoute.models),
                   )
                 : ListView.builder(
                     controller: _scrollController,
@@ -296,9 +311,9 @@ class _EmptyAssistant extends StatelessWidget {
     final cta = hasModel
         ? 'Type a message below to start a chat.'
         : installedCount == 0
-            ? 'No models installed yet. Tap "Models" above to download one.'
-            : 'Tap "Models" above to load one of your $installedCount '
-                'downloaded models.';
+            ? 'No models installed yet — open Models to download one.'
+            : 'Open Models to load one of your $installedCount downloaded '
+                'models.';
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
@@ -312,7 +327,7 @@ class _EmptyAssistant extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             Text(
-              'On-device assistant',
+              'On-device playground',
               style: theme.textTheme.titleMedium,
               textAlign: TextAlign.center,
             ),

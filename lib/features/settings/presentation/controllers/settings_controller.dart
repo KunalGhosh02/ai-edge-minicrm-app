@@ -18,20 +18,27 @@ class AssistantSettings extends Equatable {
   const AssistantSettings({
     required this.systemPrompt,
     required this.ragEnabled,
+    required this.thinkingEnabled,
   });
 
   final String systemPrompt;
   final bool ragEnabled;
+  final bool thinkingEnabled;
 
-  AssistantSettings copyWith({String? systemPrompt, bool? ragEnabled}) {
+  AssistantSettings copyWith({
+    String? systemPrompt,
+    bool? ragEnabled,
+    bool? thinkingEnabled,
+  }) {
     return AssistantSettings(
       systemPrompt: systemPrompt ?? this.systemPrompt,
       ragEnabled: ragEnabled ?? this.ragEnabled,
+      thinkingEnabled: thinkingEnabled ?? this.thinkingEnabled,
     );
   }
 
   @override
-  List<Object?> get props => [systemPrompt, ragEnabled];
+  List<Object?> get props => [systemPrompt, ragEnabled, thinkingEnabled];
 }
 
 class SettingsController extends AsyncNotifier<AssistantSettings> {
@@ -43,6 +50,7 @@ class SettingsController extends AsyncNotifier<AssistantSettings> {
     return AssistantSettings(
       systemPrompt: _repo!.getSystemPrompt(),
       ragEnabled: _repo!.getRagEnabled(),
+      thinkingEnabled: _repo!.getThinkingEnabled(),
     );
   }
 
@@ -73,6 +81,13 @@ class SettingsController extends AsyncNotifier<AssistantSettings> {
     if (repo == null) return;
     await repo.setRagEnabled(value: enabled);
     state = AsyncData(state.value!.copyWith(ragEnabled: enabled));
+  }
+
+  Future<void> setThinkingEnabled({required bool enabled}) async {
+    final repo = _repo;
+    if (repo == null) return;
+    await repo.setThinkingEnabled(value: enabled);
+    state = AsyncData(state.value!.copyWith(thinkingEnabled: enabled));
   }
 }
 

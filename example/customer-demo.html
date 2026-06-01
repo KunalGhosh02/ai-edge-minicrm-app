@@ -1,0 +1,441 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MiniCRM customer demo</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #0f1115;
+        --panel: #161a22;
+        --panel-2: #1d222c;
+        --border: #2a313d;
+        --text: #e6e9ef;
+        --muted: #9aa3b2;
+        --accent: #6aa3ff;
+        --customer: #2b5cff;
+        --assistant: #2f3a4e;
+        --danger: #ff6b6b;
+      }
+      @media (prefers-color-scheme: light) {
+        :root {
+          --bg: #f5f7fb;
+          --panel: #ffffff;
+          --panel-2: #f0f2f7;
+          --border: #d9deea;
+          --text: #1a1d24;
+          --muted: #5b6577;
+          --accent: #2257d6;
+          --customer: #2257d6;
+          --assistant: #e6eaf4;
+          --danger: #c0392b;
+        }
+      }
+      * { box-sizing: border-box; }
+      html, body { height: 100%; margin: 0; }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        display: flex;
+        justify-content: center;
+        padding: 24px;
+      }
+      .app {
+        width: 100%;
+        max-width: 780px;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+      h1 { font-size: 20px; margin: 0; }
+      .muted { color: var(--muted); font-size: 13px; }
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 16px;
+      }
+      .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+      label { font-size: 12px; color: var(--muted); display: block; margin-bottom: 4px; }
+      input[type="text"], textarea {
+        width: 100%;
+        background: var(--panel-2);
+        color: var(--text);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 10px 12px;
+        font-size: 14px;
+        font-family: inherit;
+      }
+      input[type="text"]:focus, textarea:focus {
+        outline: none;
+        border-color: var(--accent);
+      }
+      button {
+        background: var(--accent);
+        color: white;
+        border: none;
+        border-radius: 8px;
+        padding: 10px 14px;
+        font-size: 14px;
+        cursor: pointer;
+      }
+      button.secondary {
+        background: var(--panel-2);
+        color: var(--text);
+        border: 1px solid var(--border);
+      }
+      button:disabled { opacity: 0.5; cursor: not-allowed; }
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        background: var(--panel-2);
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        padding: 4px 10px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+      .dot.ok { background: #2ecc71; }
+      .dot.warn { background: #f1c40f; }
+      .dot.err { background: var(--danger); }
+      .messages {
+        height: 420px;
+        overflow-y: auto;
+        background: var(--panel-2);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .msg {
+        max-width: 75%;
+        padding: 8px 12px;
+        border-radius: 12px;
+        font-size: 14px;
+        line-height: 1.35;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+      }
+      .msg.customer {
+        align-self: flex-end;
+        background: var(--customer);
+        color: white;
+        border-bottom-right-radius: 4px;
+      }
+      .msg.assistant {
+        align-self: flex-start;
+        background: var(--assistant);
+        color: var(--text);
+        border-bottom-left-radius: 4px;
+      }
+      .meta {
+        font-size: 10px;
+        opacity: 0.75;
+        margin-top: 4px;
+      }
+      .empty {
+        color: var(--muted);
+        text-align: center;
+        padding: 32px 16px;
+        font-size: 13px;
+      }
+      .send-form {
+        display: flex;
+        gap: 8px;
+        align-items: flex-end;
+      }
+      .send-form textarea {
+        flex: 1;
+        min-height: 44px;
+        max-height: 160px;
+        resize: vertical;
+      }
+      .error {
+        color: var(--danger);
+        font-size: 13px;
+      }
+      code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        background: var(--panel-2);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        padding: 1px 5px;
+        font-size: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <div class="row" style="justify-content: space-between">
+        <h1>MiniCRM customer demo</h1>
+        <span id="auth-pill" class="pill">
+          <span id="auth-dot" class="dot"></span>
+          <span id="auth-label">starting…</span>
+        </span>
+      </div>
+      <p class="muted">
+        Signs in anonymously, then mirrors the schema the admin app expects at
+        <code>users/&lt;providerUid&gt;/sessions/&lt;yourAnonUid&gt;/messages/&lt;msgId&gt;</code>.
+      </p>
+
+      <div class="panel">
+        <label for="provider-input">Provider (admin) user id</label>
+        <div class="row">
+          <input id="provider-input" type="text" placeholder="paste the admin's Firebase Auth uid" />
+          <button id="connect-btn" class="secondary">Connect</button>
+        </div>
+        <div class="row" style="margin-top: 8px; gap: 16px">
+          <span class="muted">
+            Your customer id: <code id="customer-id">—</code>
+          </span>
+          <span id="stream-pill" class="pill">
+            <span id="stream-dot" class="dot"></span>
+            <span id="stream-label">not connected</span>
+          </span>
+        </div>
+        <div id="error" class="error" style="margin-top: 8px"></div>
+      </div>
+
+      <div class="panel">
+        <div class="row" style="justify-content: space-between; margin-bottom: 8px">
+          <strong>Conversation</strong>
+          <span id="count" class="muted">0 messages</span>
+        </div>
+        <div id="messages" class="messages">
+          <div class="empty">Connect to a provider to start the stream.</div>
+        </div>
+        <form id="send-form" class="send-form" style="margin-top: 12px">
+          <textarea id="send-input" placeholder="Type a message as the customer…" disabled></textarea>
+          <button id="send-btn" type="submit" disabled>Send</button>
+        </form>
+      </div>
+    </div>
+
+    <script type="module">
+      import { initializeApp } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-app.js";
+      import {
+        getAuth,
+        signInAnonymously,
+        onAuthStateChanged,
+      } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-auth.js";
+      import {
+        getFirestore,
+        collection,
+        doc,
+        query,
+        orderBy,
+        onSnapshot,
+        Timestamp,
+        writeBatch,
+      } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-firestore.js";
+
+      const firebaseConfig = {
+        apiKey: "REPLACE_WITH_API_KEY",
+        authDomain: "REPLACE_WITH_PROJECT_ID.firebaseapp.com",
+        projectId: "REPLACE_WITH_PROJECT_ID",
+        appId: "REPLACE_WITH_APP_ID",
+      };
+
+      const app = initializeApp(firebaseConfig);
+      const auth = getAuth(app);
+      const db = getFirestore(app);
+
+      const $ = (id) => document.getElementById(id);
+      const authDot = $("auth-dot");
+      const authLabel = $("auth-label");
+      const streamDot = $("stream-dot");
+      const streamLabel = $("stream-label");
+      const customerIdEl = $("customer-id");
+      const providerInput = $("provider-input");
+      const connectBtn = $("connect-btn");
+      const messagesEl = $("messages");
+      const countEl = $("count");
+      const sendInput = $("send-input");
+      const sendBtn = $("send-btn");
+      const sendForm = $("send-form");
+      const errorEl = $("error");
+
+      let providerUid = null;
+      let customerUid = null;
+      let unsubscribe = null;
+
+      function setAuthState(state, label) {
+        authDot.className = `dot ${state}`;
+        authLabel.textContent = label;
+      }
+      function setStreamState(state, label) {
+        streamDot.className = `dot ${state}`;
+        streamLabel.textContent = label;
+      }
+      function showError(msg) {
+        errorEl.textContent = msg ?? "";
+      }
+
+      function renderMessages(docs) {
+        countEl.textContent = `${docs.length} message${docs.length === 1 ? "" : "s"}`;
+        if (docs.length === 0) {
+          messagesEl.innerHTML = `<div class="empty">No messages yet — send one below.</div>`;
+          return;
+        }
+        const wasAtBottom =
+          messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 80;
+        messagesEl.innerHTML = "";
+        for (const d of docs) {
+          const data = d.data();
+          const sender = data.sender ?? "customer";
+          const text = data.text ?? "";
+          const createdAt =
+            data.createdAt && typeof data.createdAt.toDate === "function"
+              ? data.createdAt.toDate()
+              : null;
+          const div = document.createElement("div");
+          div.className = `msg ${sender === "assistant" ? "assistant" : "customer"}`;
+          const time = createdAt
+            ? createdAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+            : "…";
+          div.innerHTML = `${escapeHtml(text)}<div class="meta">${sender} · ${time}</div>`;
+          messagesEl.appendChild(div);
+        }
+        if (wasAtBottom) {
+          messagesEl.scrollTop = messagesEl.scrollHeight;
+        }
+      }
+
+      function escapeHtml(s) {
+        return s
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+      }
+
+      function subscribe() {
+        if (unsubscribe) {
+          unsubscribe();
+          unsubscribe = null;
+        }
+        if (!providerUid || !customerUid) return;
+        setStreamState("warn", "connecting…");
+        const ref = collection(
+          db,
+          "users",
+          providerUid,
+          "sessions",
+          customerUid,
+          "messages",
+        );
+        const q = query(ref, orderBy("createdAt"));
+        unsubscribe = onSnapshot(
+          q,
+          (snap) => {
+            setStreamState("ok", `live (${snap.size})`);
+            renderMessages(snap.docs);
+            showError("");
+          },
+          (err) => {
+            setStreamState("err", "stream error");
+            showError(`Firestore: ${err.code ?? ""} ${err.message ?? err}`);
+          },
+        );
+        sendInput.disabled = false;
+        sendBtn.disabled = false;
+      }
+
+      async function sendCustomerMessage(text) {
+        if (!providerUid || !customerUid) return;
+        const trimmed = text.trim();
+        if (!trimmed) return;
+        const msgId = crypto.randomUUID();
+        const sessionRef = doc(db, "users", providerUid, "sessions", customerUid);
+        const msgRef = doc(
+          db,
+          "users",
+          providerUid,
+          "sessions",
+          customerUid,
+          "messages",
+          msgId,
+        );
+        const now = Timestamp.now();
+        const batch = writeBatch(db);
+        batch.set(msgRef, {
+          id: msgId,
+          sender: "customer",
+          text: trimmed,
+          createdAt: now,
+        });
+        batch.set(
+          sessionRef,
+          {
+            lastMessageAt: now,
+            lastMessagePreview: trimmed.length > 80 ? trimmed.slice(0, 80) + "…" : trimmed,
+            lastSender: "customer",
+          },
+          { merge: true },
+        );
+        try {
+          await batch.commit();
+          showError("");
+        } catch (err) {
+          showError(`Send failed: ${err.code ?? ""} ${err.message ?? err}`);
+        }
+      }
+
+      onAuthStateChanged(auth, (user) => {
+        if (user) {
+          customerUid = user.uid;
+          customerIdEl.textContent = user.uid;
+          setAuthState("ok", `signed in: ${user.uid.slice(0, 8)}…`);
+          if (providerUid) subscribe();
+        } else {
+          customerUid = null;
+          customerIdEl.textContent = "—";
+          setAuthState("warn", "signing in…");
+          signInAnonymously(auth).catch((err) => {
+            setAuthState("err", "sign-in failed");
+            showError(`Auth: ${err.code ?? ""} ${err.message ?? err}`);
+          });
+        }
+      });
+
+      connectBtn.addEventListener("click", () => {
+        const v = providerInput.value.trim();
+        if (!v) {
+          showError("Enter a provider uid first.");
+          return;
+        }
+        providerUid = v;
+        subscribe();
+      });
+
+      providerInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          connectBtn.click();
+        }
+      });
+
+      sendForm.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const text = sendInput.value;
+        sendInput.value = "";
+        sendCustomerMessage(text);
+      });
+
+      sendInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          sendForm.requestSubmit();
+        }
+      });
+    </script>
+  </body>
+</html>

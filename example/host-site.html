@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Acme Coffee — example host site</title>
+    <style>
+      :root {
+        --brand: #6b3a1f;
+        --bg: #fff8f0;
+        --text: #2c1810;
+        --muted: #7a6a5e;
+        --card: #ffffff;
+        --border: #e8dccb;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: Georgia, "Times New Roman", serif;
+        background: var(--bg);
+        color: var(--text);
+        line-height: 1.6;
+      }
+      nav {
+        background: var(--brand);
+        color: white;
+        padding: 16px 32px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      nav a {
+        color: white;
+        text-decoration: none;
+        margin-left: 24px;
+        font-family: -apple-system, system-ui, sans-serif;
+        font-size: 14px;
+      }
+      .brand { font-size: 22px; font-weight: bold; }
+      .hero {
+        padding: 64px 32px;
+        max-width: 800px;
+        margin: 0 auto;
+        text-align: center;
+      }
+      .hero h1 { font-size: 42px; margin: 0 0 16px; }
+      .hero p { font-size: 18px; color: var(--muted); margin: 0 auto 24px; max-width: 600px; }
+      .hero button {
+        background: var(--brand);
+        color: white;
+        border: none;
+        padding: 12px 28px;
+        font-size: 16px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-family: inherit;
+      }
+      .grid {
+        max-width: 1000px;
+        margin: 32px auto;
+        padding: 0 32px;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: 24px;
+      }
+      .card {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 20px;
+      }
+      .card h3 { margin-top: 0; }
+      .card p { font-size: 15px; color: var(--muted); }
+      footer {
+        background: var(--brand);
+        color: white;
+        text-align: center;
+        padding: 24px;
+        margin-top: 48px;
+        font-family: -apple-system, system-ui, sans-serif;
+        font-size: 13px;
+      }
+      .hint {
+        max-width: 800px;
+        margin: 32px auto;
+        padding: 16px 24px;
+        background: #fff3d6;
+        border-left: 4px solid #d4a64b;
+        border-radius: 4px;
+        font-family: -apple-system, system-ui, sans-serif;
+        font-size: 14px;
+        color: #4a3a16;
+      }
+      code {
+        background: rgba(0, 0, 0, 0.06);
+        padding: 1px 6px;
+        border-radius: 3px;
+        font-size: 13px;
+      }
+    </style>
+  </head>
+  <body>
+    <nav>
+      <div class="brand">Acme Coffee</div>
+      <div>
+        <a href="#">Menu</a>
+        <a href="#">Stores</a>
+        <a href="#">About</a>
+        <a href="#">Contact</a>
+      </div>
+    </nav>
+
+    <section class="hero">
+      <h1>Single-origin, slow-roasted, on your doorstep.</h1>
+      <p>
+        Hand-picked beans from small farms in three continents, roasted weekly
+        and shipped within 48 hours. Look for the chat bubble in the corner if
+        you have any questions.
+      </p>
+      <button>Shop the latest roast</button>
+    </section>
+
+    <div class="hint">
+      <strong>Demo note:</strong> this is a sample host page. The floating chat
+      bubble in the bottom-right is the MiniCRM widget, embedded via a single
+      <code>&lt;script&gt;</code> tag below. Open it to talk to the on-device
+      support bot running in the admin app.
+    </div>
+
+    <section class="grid">
+      <div class="card">
+        <h3>Subscriptions</h3>
+        <p>
+          Pick a roast level and a cadence — weekly, fortnightly or monthly —
+          and we'll ship freshly-roasted beans straight to your door.
+        </p>
+      </div>
+      <div class="card">
+        <h3>Single bags</h3>
+        <p>
+          Trying us for the first time? Grab a 250&nbsp;g bag of our current
+          house blend and see how you like it.
+        </p>
+      </div>
+      <div class="card">
+        <h3>Brewing kit</h3>
+        <p>
+          Pour-over kettle, ceramic dripper, paper filters, and our beginner
+          brewing guide.
+        </p>
+      </div>
+    </section>
+
+    <footer>© Acme Coffee — fictional brand for the MiniCRM widget demo.</footer>
+
+    <script
+      type="module"
+      src="./widget.js"
+      data-provider-uid="REPLACE_WITH_ADMIN_UID"
+      data-widget-title="Acme Support"
+      data-firebase-api-key="REPLACE_WITH_API_KEY"
+      data-firebase-auth-domain="REPLACE_WITH_PROJECT_ID.firebaseapp.com"
+      data-firebase-project-id="REPLACE_WITH_PROJECT_ID"
+      data-firebase-app-id="REPLACE_WITH_APP_ID"
+    ></script>
+  </body>
+</html>

@@ -52,8 +52,8 @@ class _PromptInputState extends State<PromptInput> {
                 onSubmitted: (_) => _handleSubmit(),
                 decoration: InputDecoration(
                   hintText: widget.enabled
-                      ? 'Ask the on-device assistant…'
-                      : 'Assistant not ready',
+                      ? 'Ask the on-device playground…'
+                      : 'Playground not ready',
                 ),
               ),
             ),

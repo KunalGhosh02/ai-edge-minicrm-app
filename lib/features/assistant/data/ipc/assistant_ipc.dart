@@ -137,12 +137,14 @@ final class SwitchChatCommand extends AssistantCommand {
     required this.systemInstruction,
     required this.chatFamily,
     required this.history,
+    this.thinking = true,
   });
 
   final String threadId;
   final String systemInstruction;
   final String chatFamily;
   final List<Map<String, String>> history;
+  final bool thinking;
 
   @override
   Map<String, dynamic> toMap() => {
@@ -151,6 +153,7 @@ final class SwitchChatCommand extends AssistantCommand {
         'systemInstruction': systemInstruction,
         'chatFamily': chatFamily,
         'history': history,
+        'thinking': thinking,
       };
 }
 

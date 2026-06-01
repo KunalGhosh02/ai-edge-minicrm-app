@@ -90,7 +90,7 @@ class _SystemPromptScreenState extends ConsumerState<SystemPromptScreen> {
                   const _InfoCard(
                     text:
                         'Sent to the model on every conversation. Keep it tight: '
-                        "state the assistant's role, tone, and any hard "
+                        "state the model's role, tone, and any hard "
                         'constraints. RAG snippets are appended after this '
                         'prompt automatically when retrieval finds matches.',
                   ),
@@ -123,6 +123,22 @@ class _SystemPromptScreenState extends ConsumerState<SystemPromptScreen> {
                       ref
                           .read(settingsControllerProvider.notifier)
                           .setRagEnabled(enabled: v),
+                    ),
+                  ),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Show model thinking'),
+                    subtitle: Text(
+                      'Reasoning-capable models (Qwen3, DeepSeek R1, '
+                      'Gemma 4) stream their chain-of-thought when on. '
+                      'Disable for faster, terser replies.',
+                      style: theme.textTheme.bodySmall,
+                    ),
+                    value: settings.thinkingEnabled,
+                    onChanged: (v) => unawaited(
+                      ref
+                          .read(settingsControllerProvider.notifier)
+                          .setThinkingEnabled(enabled: v),
                     ),
                   ),
                   const SizedBox(height: 12),

@@ -100,7 +100,7 @@ class ForegroundAssistantService implements AssistantService {
       FlutterForegroundTask.init(
         androidNotificationOptions: AndroidNotificationOptions(
           channelId: 'minicrm_assistant',
-          channelName: 'On-device assistant',
+          channelName: 'MiniCRM playground',
           channelDescription:
               'Keeps the on-device LiteRT-LM model warm in the foreground.',
           onlyAlertOnce: true,
@@ -133,8 +133,8 @@ class ForegroundAssistantService implements AssistantService {
     _serviceKnownRunning = false;
     await FlutterForegroundTask.startService(
       serviceId: _serviceId,
-      notificationTitle: 'Assistant ready',
-      notificationText: 'Tap to open the assistant.',
+      notificationTitle: 'Playground ready',
+      notificationText: 'Tap to open the playground.',
       callback: assistantTaskCallback,
     );
     _serviceKnownRunning = true;
@@ -275,6 +275,7 @@ class ForegroundAssistantService implements AssistantService {
     required String systemInstruction,
     required String chatFamily,
     required List<Map<String, String>> history,
+    bool thinking = true,
   }) async {
     await _ensureRunning();
     FlutterForegroundTask.sendDataToTask(
@@ -283,6 +284,7 @@ class ForegroundAssistantService implements AssistantService {
         systemInstruction: systemInstruction,
         chatFamily: chatFamily,
         history: history,
+        thinking: thinking,
       ).toMap(),
     );
   }

@@ -52,6 +52,7 @@ abstract interface class AssistantService {
     required String systemInstruction,
     required String chatFamily,
     required List<Map<String, String>> history,
+    bool thinking = true,
   });
 
   /// Download (and optionally load) the embedding model + tokenizer pair.

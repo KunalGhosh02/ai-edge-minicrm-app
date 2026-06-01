@@ -5,24 +5,23 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:minicrm/features/assistant/domain/entities/installed_model.dart';
 import 'package:minicrm/features/assistant/domain/entities/model_preset.dart';
 import 'package:minicrm/features/assistant/presentation/controllers/assistant_controller.dart';
+import 'package:minicrm/features/assistant/presentation/controllers/hf_token_controller.dart';
 
-class ModelsSheet extends ConsumerStatefulWidget {
-  const ModelsSheet({super.key});
+class ModelsView extends ConsumerStatefulWidget {
+  const ModelsView({
+    super.key,
+    this.popOnLoad = false,
+    this.padding = const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+  });
 
-  static Future<void> show(BuildContext context) {
-    return showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (_) => const ModelsSheet(),
-    );
-  }
+  final bool popOnLoad;
+  final EdgeInsets padding;
 
   @override
-  ConsumerState<ModelsSheet> createState() => _ModelsSheetState();
+  ConsumerState<ModelsView> createState() => _ModelsViewState();
 }
 
-class _ModelsSheetState extends ConsumerState<ModelsSheet> {
+class _ModelsViewState extends ConsumerState<ModelsView> {
   @override
   void initState() {
     super.initState();
@@ -38,9 +37,6 @@ class _ModelsSheetState extends ConsumerState<ModelsSheet> {
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(assistantControllerProvider);
-    final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
-    // Hide tokenizer companion files from the user-facing list; they are
-    // managed automatically alongside the embedder .tflite.
     final installed = state.installedModels
         .where((m) => !m.name.endsWith('.model'))
         .toList();
@@ -49,72 +45,60 @@ class _ModelsSheetState extends ConsumerState<ModelsSheet> {
         .where((p) => !installedNames.contains(ModelPresets.fileNameOf(p)))
         .toList();
 
-    return SafeArea(
-      top: false,
-      child: Padding(
-        padding: EdgeInsets.only(
-          left: 16,
-          right: 16,
-          top: 4,
-          bottom: 16 + keyboardInset,
-        ),
-        child: SingleChildScrollView(
-          child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              'Models',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: 12),
-            _SectionHeader(
-              title: 'Installed (${installed.length})',
-              action: installed.isEmpty
-                  ? null
-                  : IconButton(
-                      tooltip: 'Refresh',
-                      icon: const Icon(Icons.refresh, size: 20),
-                      onPressed: () {
-                        unawaited(
-                          ref
-                              .read(assistantControllerProvider.notifier)
-                              .refreshInstalledModels(),
-                        );
-                      },
-                    ),
-            ),
-            if (installed.isEmpty)
-              const _EmptyInstalled()
-            else
-              for (final model in installed)
-                _InstalledModelTile(
-                  model: model,
-                  isActive: state.currentModel?.path == model.path,
-                  activeBackend:
-                      state.currentModel?.path == model.path
-                          ? state.currentBackend
-                          : null,
-                  embedderLoadedPath:
-                      state.embedderLoaded ? state.embedderModelPath : null,
-                  embedderActiveBackend:
-                      state.embedderLoaded ? state.embedderBackend : null,
-                  allInstalled: state.installedModels,
-                ),
-            const SizedBox(height: 20),
-            _SectionHeader(title: 'Available (${availablePresets.length})'),
-            const SizedBox(height: 6),
-            Text(
-              'Downloads auto-resume on failure — tap install again to '
-              'continue. The selected backend is used the first time the model '
-              'loads; you can switch later from the installed list.',
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-            const SizedBox(height: 12),
-            _InstallNewSection(availablePresets: availablePresets),
-          ],
+    return Padding(
+      padding: widget.padding,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _SectionHeader(
+            title: 'Installed (${installed.length})',
+            action: installed.isEmpty
+                ? null
+                : IconButton(
+                    tooltip: 'Refresh',
+                    icon: const Icon(Icons.refresh, size: 20),
+                    onPressed: () {
+                      unawaited(
+                        ref
+                            .read(assistantControllerProvider.notifier)
+                            .refreshInstalledModels(),
+                      );
+                    },
+                  ),
           ),
-        ),
+          if (installed.isEmpty)
+            const _EmptyInstalled()
+          else
+            for (final model in installed)
+              _InstalledModelTile(
+                model: model,
+                isActive: state.currentModel?.path == model.path,
+                activeBackend: state.currentModel?.path == model.path
+                    ? state.currentBackend
+                    : null,
+                embedderLoadedPath:
+                    state.embedderLoaded ? state.embedderModelPath : null,
+                embedderActiveBackend:
+                    state.embedderLoaded ? state.embedderBackend : null,
+                allInstalled: state.installedModels,
+                popOnLoad: widget.popOnLoad,
+              ),
+          const SizedBox(height: 20),
+          _SectionHeader(title: 'Available (${availablePresets.length})'),
+          const SizedBox(height: 6),
+          Text(
+            'Downloads auto-resume on failure — tap install again to '
+            'continue. The selected backend is used the first time the model '
+            'loads; you can switch later from the installed list.',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          const SizedBox(height: 12),
+          _InstallNewSection(
+            availablePresets: availablePresets,
+            popOnLoad: widget.popOnLoad,
+          ),
+        ],
       ),
     );
   }
@@ -157,7 +141,7 @@ class _EmptyInstalled extends StatelessWidget {
       child: Text(
         "No models on this device yet. Pick one from 'Available' below to "
         "download it. Files live in the app's private storage and are "
-        'auto-loaded the next time you open the assistant.',
+        'auto-loaded the next time you open the playground.',
         style: theme.textTheme.bodySmall,
       ),
     );
@@ -172,21 +156,16 @@ class _InstalledModelTile extends ConsumerStatefulWidget {
     required this.embedderLoadedPath,
     required this.embedderActiveBackend,
     required this.allInstalled,
+    required this.popOnLoad,
   });
 
   final InstalledModel model;
   final bool isActive;
   final String? activeBackend;
-
-  /// Path of the currently loaded embedder model (.tflite), or null.
   final String? embedderLoadedPath;
-
-  /// Backend (`cpu` / `gpu`) reported by the currently loaded embedder.
   final String? embedderActiveBackend;
-
-  /// Full list of installed files including hidden tokenizers; used to
-  /// resolve the embedder's sentencepiece.model companion.
   final List<InstalledModel> allInstalled;
+  final bool popOnLoad;
 
   @override
   ConsumerState<_InstalledModelTile> createState() =>
@@ -340,7 +319,7 @@ class _InstalledModelTileState extends ConsumerState<_InstalledModelTile> {
                   children: [
                     if (!isEmbedderLoaded)
                       Expanded(
-                        child: _BackendDropdown(
+                        child: BackendDropdown(
                           value: _embedderBackend,
                           allowNpu: false,
                           onChanged: (v) =>
@@ -383,8 +362,8 @@ class _InstalledModelTileState extends ConsumerState<_InstalledModelTile> {
                             assistantControllerProvider
                                 .select((s) => s.embedderLoading),
                           );
-                          final canLoad = !loading &&
-                              _resolveTokenizerPath() != null;
+                          final canLoad =
+                              !loading && _resolveTokenizerPath() != null;
                           return FilledButton.tonalIcon(
                             onPressed: canLoad ? _onLoadEmbedder : null,
                             icon: loading
@@ -417,7 +396,7 @@ class _InstalledModelTileState extends ConsumerState<_InstalledModelTile> {
             Row(
               children: [
                 Expanded(
-                  child: _BackendDropdown(
+                  child: BackendDropdown(
                     value: _backend,
                     onChanged: (v) => setState(() => _backend = v),
                   ),
@@ -467,12 +446,13 @@ class _InstalledModelTileState extends ConsumerState<_InstalledModelTile> {
             maxTokens: preset?.maxTokens ?? 4096,
           ),
     );
-    Navigator.of(context).pop();
   }
 
   void _onUnload() {
     unawaited(ref.read(assistantControllerProvider.notifier).unloadModel());
-    Navigator.of(context).pop();
+    if (widget.popOnLoad) {
+      Navigator.of(context).pop();
+    }
   }
 
   Future<void> _onDelete() async {
@@ -504,7 +484,6 @@ class _InstalledModelTileState extends ConsumerState<_InstalledModelTile> {
     await ref
         .read(assistantControllerProvider.notifier)
         .deleteInstalledModel(widget.model);
-    // For embedders, also nuke the tokenizer companion.
     final tokenizerPath = _resolveTokenizerPath();
     if (tokenizerPath != null) {
       await ref
@@ -519,8 +498,6 @@ class _InstalledModelTileState extends ConsumerState<_InstalledModelTile> {
     }
   }
 
-  /// Resolves the sentencepiece tokenizer companion that sits next to
-  /// the embedder .tflite file.
   String? _resolveTokenizerPath() {
     if (!widget.model.name.endsWith('.tflite')) return null;
     for (final m in widget.allInstalled) {
@@ -545,7 +522,7 @@ class _InstalledModelTileState extends ConsumerState<_InstalledModelTile> {
             sequenceLength: preset?.sequenceLength,
             presetId: preset?.id,
           );
-      if (navigator.mounted) {
+      if (widget.popOnLoad && navigator.mounted) {
         navigator.pop();
       }
     } on Object catch (e) {
@@ -558,14 +535,20 @@ class _InstalledModelTileState extends ConsumerState<_InstalledModelTile> {
 
   void _onUnloadEmbedder() {
     unawaited(ref.read(assistantControllerProvider.notifier).unloadEmbedder());
-    Navigator.of(context).pop();
+    if (widget.popOnLoad) {
+      Navigator.of(context).pop();
+    }
   }
 }
 
 class _InstallNewSection extends ConsumerStatefulWidget {
-  const _InstallNewSection({required this.availablePresets});
+  const _InstallNewSection({
+    required this.availablePresets,
+    required this.popOnLoad,
+  });
 
   final List<ModelPreset> availablePresets;
+  final bool popOnLoad;
 
   @override
   ConsumerState<_InstallNewSection> createState() =>
@@ -577,7 +560,6 @@ class _InstallNewSectionState extends ConsumerState<_InstallNewSection> {
 
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
   final TextEditingController _urlController = TextEditingController();
-  final TextEditingController _tokenController = TextEditingController();
   String? _selectedId;
   String _backend = 'cpu';
 
@@ -594,8 +576,8 @@ class _InstallNewSectionState extends ConsumerState<_InstallNewSection> {
   @override
   void didUpdateWidget(_InstallNewSection oldWidget) {
     super.didUpdateWidget(oldWidget);
-    final stillAvailable = widget.availablePresets
-        .any((p) => p.id == _selectedId);
+    final stillAvailable =
+        widget.availablePresets.any((p) => p.id == _selectedId);
     if (!stillAvailable && _selectedId != _customId) {
       if (widget.availablePresets.isNotEmpty) {
         _applyPreset(widget.availablePresets.first);
@@ -608,7 +590,6 @@ class _InstallNewSectionState extends ConsumerState<_InstallNewSection> {
   @override
   void dispose() {
     _urlController.dispose();
-    _tokenController.dispose();
     super.dispose();
   }
 
@@ -628,14 +609,20 @@ class _InstallNewSectionState extends ConsumerState<_InstallNewSection> {
 
   ModelPreset? get _currentPreset {
     if (_selectedId == _customId || _selectedId == null) return null;
-    return widget.availablePresets
-        .firstWhere((p) => p.id == _selectedId);
+    return widget.availablePresets.firstWhere((p) => p.id == _selectedId);
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final preset = _currentPreset;
+    final tokenAsync = ref.watch(hfTokenProvider);
+    final hasToken = tokenAsync.maybeWhen(
+      data: (t) => t != null && t.isNotEmpty,
+      orElse: () => false,
+    );
+    final needsAuth = preset?.requiresAuth ?? false;
+    final canInstall = !needsAuth || hasToken;
 
     return Form(
       key: _formKey,
@@ -675,13 +662,18 @@ class _InstallNewSectionState extends ConsumerState<_InstallNewSection> {
               icon: Icons.info_outline,
               text: preset!.description!,
             ),
-          if (preset?.requiresAuth ?? false) ...[
+          if (needsAuth) ...[
             const SizedBox(height: 8),
             _InfoBanner(
-              icon: Icons.lock_outline,
-              text: 'Gated model: paste a HuggingFace token below and accept '
-                  'the license on the model page first.',
-              color: theme.colorScheme.tertiary,
+              icon: hasToken ? Icons.verified_user : Icons.lock_outline,
+              text: hasToken
+                  ? 'Gated model: using your saved HuggingFace token.'
+                  : 'Gated model: save a HuggingFace token from the card '
+                      'above first, then accept the license on the model '
+                      'page on huggingface.co.',
+              color: hasToken
+                  ? theme.colorScheme.tertiary
+                  : theme.colorScheme.error,
             ),
           ],
           const SizedBox(height: 16),
@@ -691,31 +683,23 @@ class _InstallNewSectionState extends ConsumerState<_InstallNewSection> {
               labelText: 'Model URL (.litertlm)',
             ),
             maxLines: 3,
-            validator: (v) => (v == null || v.trim().isEmpty)
-                ? 'URL is required'
-                : null,
+            validator: (v) =>
+                (v == null || v.trim().isEmpty) ? 'URL is required' : null,
           ),
           const SizedBox(height: 12),
-          _BackendDropdown(
+          BackendDropdown(
             value: _backend,
             onChanged: (v) => setState(() => _backend = v),
-          ),
-          const SizedBox(height: 12),
-          TextFormField(
-            controller: _tokenController,
-            decoration: const InputDecoration(
-              labelText: 'HuggingFace token (optional)',
-              hintText: 'hf_...',
-            ),
-            obscureText: true,
           ),
           const SizedBox(height: 16),
           SizedBox(
             width: double.infinity,
             child: FilledButton.icon(
               icon: const Icon(Icons.download),
-              label: const Text('Download & install'),
-              onPressed: _onSubmit,
+              label: Text(
+                canInstall ? 'Download & install' : 'Save HF token to install',
+              ),
+              onPressed: canInstall ? _onSubmit : null,
             ),
           ),
         ],
@@ -723,14 +707,13 @@ class _InstallNewSectionState extends ConsumerState<_InstallNewSection> {
     );
   }
 
-  void _onSubmit() {
+  Future<void> _onSubmit() async {
     if (!_formKey.currentState!.validate()) return;
     final url = _urlController.text.trim();
     final preset = ModelPresets.matchByUrl(url);
     final isEmbedding = preset?.kind == ModelKind.embedding;
-    final token = _tokenController.text.trim().isEmpty
-        ? null
-        : _tokenController.text.trim();
+    final tokenAsync = ref.read(hfTokenProvider);
+    final token = tokenAsync.value;
 
     if (isEmbedding && preset?.tokenizerUrl != null) {
       unawaited(
@@ -756,7 +739,9 @@ class _InstallNewSectionState extends ConsumerState<_InstallNewSection> {
             ),
       );
     }
-    Navigator.of(context).pop();
+    if (widget.popOnLoad && mounted) {
+      Navigator.of(context).pop();
+    }
   }
 }
 
@@ -797,10 +782,11 @@ class _InfoBanner extends StatelessWidget {
   }
 }
 
-class _BackendDropdown extends StatelessWidget {
-  const _BackendDropdown({
+class BackendDropdown extends StatelessWidget {
+  const BackendDropdown({
     required this.value,
     required this.onChanged,
+    super.key,
     this.allowNpu = true,
   });
 
@@ -812,15 +798,15 @@ class _BackendDropdown extends StatelessWidget {
   Widget build(BuildContext context) {
     return DropdownButtonFormField<String>(
       initialValue: value,
+      isExpanded: true,
       decoration: const InputDecoration(
         labelText: 'Backend',
         isDense: true,
       ),
       items: [
         const DropdownMenuItem(value: 'cpu', child: Text('CPU')),
-        const DropdownMenuItem(value: 'gpu', child: Text('GPU (Android)')),
-        if (allowNpu)
-          const DropdownMenuItem(value: 'npu', child: Text('NPU')),
+        const DropdownMenuItem(value: 'gpu', child: Text('GPU')),
+        if (allowNpu) const DropdownMenuItem(value: 'npu', child: Text('NPU')),
       ],
       onChanged: (v) {
         if (v != null) onChanged(v);

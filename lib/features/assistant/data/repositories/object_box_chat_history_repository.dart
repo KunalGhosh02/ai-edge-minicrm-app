@@ -29,6 +29,15 @@ class ObjectBoxChatHistoryRepository implements ChatHistoryRepository {
   }
 
   @override
+  Stream<List<AssistantMessage>> watchMessages(String threadId) {
+    final query = _messageBox
+        .query(ChatMessageBox_.threadId.equals(threadId))
+        .order(ChatMessageBox_.createdAtMs)
+        .watch(triggerImmediately: true);
+    return query.map((q) => q.find().map(_messageToDomain).toList());
+  }
+
+  @override
   Future<List<ChatThread>> listThreads() async {
     final builder = _threadBox
         .query()

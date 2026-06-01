@@ -5,6 +5,8 @@ import 'package:minicrm/features/assistant/domain/entities/model_preset.dart';
 abstract interface class ChatHistoryRepository {
   Stream<List<ChatThread>> watchThreads();
 
+  Stream<List<AssistantMessage>> watchMessages(String threadId);
+
   Future<List<ChatThread>> listThreads();
 
   Future<ChatThread?> getThread(String threadId);

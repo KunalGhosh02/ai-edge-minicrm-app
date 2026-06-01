@@ -5,6 +5,7 @@ class SettingsRepository {
 
   static const String _kSystemPrompt = 'assistant.system_prompt';
   static const String _kRagEnabled = 'assistant.rag_enabled';
+  static const String _kThinkingEnabled = 'assistant.thinking_enabled';
   static const String _kEmbeddingModelPath = 'assistant.embedding_model_path';
 
   static const String defaultSystemPrompt =
@@ -31,6 +32,12 @@ class SettingsRepository {
 
   Future<void> setRagEnabled({required bool value}) async {
     await _prefs.setBool(_kRagEnabled, value);
+  }
+
+  bool getThinkingEnabled() => _prefs.getBool(_kThinkingEnabled) ?? true;
+
+  Future<void> setThinkingEnabled({required bool value}) async {
+    await _prefs.setBool(_kThinkingEnabled, value);
   }
 
   String? getEmbeddingModelPath() => _prefs.getString(_kEmbeddingModelPath);

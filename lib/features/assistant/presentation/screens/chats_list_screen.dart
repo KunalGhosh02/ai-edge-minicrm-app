@@ -7,7 +7,6 @@ import 'package:minicrm/app/router/app_router.dart';
 import 'package:minicrm/features/assistant/data/repositories/object_box_chat_history_repository.dart';
 import 'package:minicrm/features/assistant/domain/entities/chat_thread.dart';
 import 'package:minicrm/features/assistant/presentation/controllers/assistant_controller.dart';
-import 'package:minicrm/features/assistant/presentation/widgets/models_sheet.dart';
 
 class ChatsListScreen extends ConsumerStatefulWidget {
   const ChatsListScreen({super.key});
@@ -33,13 +32,6 @@ class _ChatsListScreenState extends ConsumerState<ChatsListScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Chats'),
-        actions: [
-          IconButton(
-            tooltip: 'Models',
-            icon: const Icon(Icons.dns_outlined),
-            onPressed: () => unawaited(ModelsSheet.show(context)),
-          ),
-        ],
       ),
       body: threadsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
@@ -264,7 +256,7 @@ class _EmptyChats extends StatelessWidget {
             Text(
               hasModel
                   ? 'Tap "New chat" below to start your first conversation.'
-                  : 'Open Models to download a model, then start a new chat.',
+                  : 'Load a model from Home → Models, then start a new chat.',
               textAlign: TextAlign.center,
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
